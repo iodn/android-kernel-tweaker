@@ -159,8 +159,9 @@ apply_schedutil_policy() {
 
 apply_cpufreq_boost() {
   mode="$1"
+  en="$(get_prop_bool cpu.cpufreq_boost.enable 0)"
   v="0"
-  [ "$mode" = "on" ] && v="1"
+  [ "$mode" = "on" ] && [ "$en" -eq 1 ] && v="1"
 
   write_node_if_exists "/sys/devices/system/cpu/cpufreq/boost" "$v"
   write_node_if_exists "/sys/module/cpufreq_boost/parameters/boost" "$v"
@@ -259,7 +260,11 @@ apply_uclamp_profile() {
       uclamp_write_group "$cg_top" "1024" "$inter_min" "0" "0"
     fi
 
-    write_node_if_exists "/proc/sys/kernel/sched_boost" "1"
+    if [ "$(get_prop_bool sched.boost.enable 0)" -eq 1 ]; then
+      write_node_if_exists "/proc/sys/kernel/sched_boost" "1"
+    else
+      write_node_if_exists "/proc/sys/kernel/sched_boost" "0"
+    fi
     set_sysctl "kernel/sched_util_clamp_min_rt_default" "0"
     set_sysctl "kernel/sched_util_clamp_min" "$inter_min"
   else
@@ -278,15 +283,15 @@ apply_uclamp_profile() {
 apply_migration_thresholds() {
   mode="$1"
   if [ "$mode" = "on" ]; then
-    set_sysctl "kernel/sched_upmigrate" "65"
-    set_sysctl "kernel/sched_downmigrate" "45"
-    set_sysctl "kernel/sched_group_upmigrate" "80"
-    set_sysctl "kernel/sched_group_downmigrate" "55"
+    set_sysctl "kernel/sched_upmigrate" "$(get_prop_int sched.upmigrate.on 75)"
+    set_sysctl "kernel/sched_downmigrate" "$(get_prop_int sched.downmigrate.on 55)"
+    set_sysctl "kernel/sched_group_upmigrate" "$(get_prop_int sched.group_upmigrate.on 85)"
+    set_sysctl "kernel/sched_group_downmigrate" "$(get_prop_int sched.group_downmigrate.on 65)"
   else
-    set_sysctl "kernel/sched_upmigrate" "95"
-    set_sysctl "kernel/sched_downmigrate" "75"
-    set_sysctl "kernel/sched_group_upmigrate" "98"
-    set_sysctl "kernel/sched_group_downmigrate" "80"
+    set_sysctl "kernel/sched_upmigrate" "$(get_prop_int sched.upmigrate.off 95)"
+    set_sysctl "kernel/sched_downmigrate" "$(get_prop_int sched.downmigrate.off 75)"
+    set_sysctl "kernel/sched_group_upmigrate" "$(get_prop_int sched.group_upmigrate.off 98)"
+    set_sysctl "kernel/sched_group_downmigrate" "$(get_prop_int sched.group_downmigrate.off 80)"
   fi
 }
 

@@ -94,8 +94,8 @@ AKTune can tune these categories depending on kernel support:
 2. CPU governor selection + schedutil ramp behavior  
    Cluster-tier-aware settings (little / big / prime)
 
-3. UCLAMP + sched_boost  
-   Prioritizes top-app / foreground and reduces background interference
+3. UCLAMP + optional broad boost
+   Prioritizes top-app / foreground and can enable sched_boost when configured
 
 4. Migration thresholds  
    Moves tasks to bigger cores sooner while interactive
@@ -201,6 +201,18 @@ Example values included in the preset:
 
   * `cpu.schedutil.on.{tier}.up/down`
   * `cpu.schedutil.off.{tier}.up/down`
+
+* Broad boost controls:
+
+  * `cpu.cpufreq_boost.enable`
+  * `sched.boost.enable`
+
+* Migration thresholds:
+
+  * `sched.upmigrate.on/off`
+  * `sched.downmigrate.on/off`
+  * `sched.group_upmigrate.on/off`
+  * `sched.group_downmigrate.on/off`
 
 * I/O behavior:
 
@@ -385,7 +397,7 @@ Example:
 ## Quick summary: why it feels fast
 
 * CPU ramps faster (schedutil tuning + tier awareness)
-* top-app gets priority (UCLAMP clamps + sched_boost)
+* top-app gets priority (UCLAMP clamps, with optional sched_boost)
 * touch triggers short boosts (input/touchboost hooks)
 * GPU doesn't drop too low (min floor during interactive)
 * background interference reduced (cpuset + clamps)
@@ -402,4 +414,4 @@ That combination reduces "Android jitter" on most modern kernels.
 | **[GadgetFS](https://github.com/iodn/gadgetfs)**          | Experiment with USB gadget functionality (hardware-adjacent, low-level).       |
 | **[TapDucky](https://github.com/iodn/tap-ducky)**                  | A security/testing tool for controlled keystroke injection workflows.          |
 | **[HIDWiggle](https://github.com/iodn/hid-wiggle)**                | A mouse jiggler built with USB gadget functionalities.           
-| **[AKTune (Android Kernel Tweaker)](https://github.com/iodn/android-kernel-tweaker)**                | Adaptive Android kernel auto-tuner for CPU/GPU/scheduler/memory/I-O. (Magisk Module).|      
+| **[AKTune (Android Kernel Tweaker)](https://github.com/iodn/android-kernel-tweaker)**                | Adaptive Android kernel auto-tuner for CPU/GPU/scheduler/memory/I-O. (Magisk Module).|

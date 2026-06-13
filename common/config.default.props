@@ -2,13 +2,17 @@
 # Path: /data/adb/aktune/config.props
 
 # Daemon cadence / anti-thrash
-daemon.interval_sec=6
+daemon.interval_sec=8
 daemon.debounce_ms=1200
 daemon.boost_ms=2600
 
 # Short interactive boost (top-app uclamp.min)
 uclamp.top.min.interactive=160
 uclamp.top.min.boost=256
+
+# Broad boost knobs are off by default; top-app uclamp handles most UI wins
+cpu.cpufreq_boost.enable=0
+sched.boost.enable=0
 
 # Schedutil ramp limits (microseconds)
 # ON = fast ramp-up + not-too-fast ramp-down (keeps UI smooth)
@@ -26,6 +30,17 @@ cpu.schedutil.off.big.up=90000
 cpu.schedutil.off.big.down=25000
 cpu.schedutil.off.prime.up=120000
 cpu.schedutil.off.prime.down=30000
+
+# Migration thresholds
+# ON keeps work responsive without moving to big cores too early.
+sched.upmigrate.on=75
+sched.downmigrate.on=55
+sched.group_upmigrate.on=85
+sched.group_downmigrate.on=65
+sched.upmigrate.off=95
+sched.downmigrate.off=75
+sched.group_upmigrate.off=98
+sched.group_downmigrate.off=80
 
 # IO policy
 io.read_ahead_kb.on=512
@@ -48,5 +63,5 @@ net.tcp_timestamps.disable=0
 touchboost.ms=200
 
 # GPU minimum freq floor (% of max)
-gpu.min_freq_pct.on=55
+gpu.min_freq_pct.on=40
 gpu.min_freq_pct.off=0
