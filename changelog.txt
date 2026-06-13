@@ -1,7 +1,9 @@
-- Improved code readability
-- Set swappiness to 60% to reduce cpu overhead
-- Added scheduler tweaks back
-- Optional: TCP timestamps can be disabled via config (default unchanged)
-- Enabled TCP low latency mode
-- Set kernel.perf_cpu_time_max_percent to 10 to reduce cpu overhead
-- Enabled CRF by default
+v2.1
+- Balanced default profile for smoother performance with better battery behavior
+- Lowered interactive GPU minimum frequency floor from 55% to 40%
+- Increased daemon polling interval from 6s to 8s to reduce background overhead
+- Added optional broad boost controls: cpu.cpufreq_boost.enable and sched.boost.enable
+- Disabled broad cpufreq/sched boost by default; top-app uclamp remains the main responsiveness path
+- Made migration thresholds configurable for ON/OFF profiles
+- Relaxed interactive migration defaults to reduce unnecessary big-core residency
+- Updated README with the new boost and migration configuration keys

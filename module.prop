@@ -1,6 +1,6 @@
 id=aktune
 name=AKTune (Android Kernel Tweaker)
-version=v2.0
-versionCode=2
+version=v2.1
+versionCode=3
 author=NSLabs (KaijinLab)
 description=Adaptive kernel auto-tuner for CPU/GPU/scheduler/memory/I-O with capability detection and baseline restore.

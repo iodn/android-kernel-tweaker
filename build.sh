@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="v2.0"
+VERSION="v2.1"
 OUT="AKTune-${VERSION}.zip"
 
 chmod 0755 ./*.sh 2>/dev/null || true
