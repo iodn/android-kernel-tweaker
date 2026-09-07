@@ -1,6 +1,7 @@
 #!/system/bin/sh
 
 MODDIR="${0%/*}"
+export AKTUNE_MODDIR="$MODDIR"
 . "$MODDIR/common/util.sh"
 
 aktune_prepare_dirs

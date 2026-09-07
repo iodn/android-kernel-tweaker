@@ -1,6 +1,7 @@
 #!/system/bin/sh
 
 MODDIR="${0%/*}"
+export AKTUNE_MODDIR="$MODDIR"
 
 # Load helpers/paths
 . "$MODDIR/common/util.sh"
@@ -8,7 +9,6 @@ MODDIR="${0%/*}"
 aktune_prepare_dirs
 
 MODE_FILE="$STATE_DIR/force_mode"
-PIDFILE="$STATE_DIR/daemon.pid"
 
 read_mode() {
   if [ -f "$MODE_FILE" ]; then
@@ -62,14 +62,18 @@ mode_desc "$nxt"
 echo "========================================"
 echo ""
 
-# Restart daemon so changes apply immediately
-if [ -f "$PIDFILE" ]; then
-  pid="$(read_first_line "$PIDFILE" 2>/dev/null)"
-  pid="$(akt_trim_ws "$pid")"
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null
-    sleep 1
-  fi
+# Keep a single writer. The running daemon observes the new mode next poll.
+if aktune_daemon_running; then
+  log_i "action: mode queued for running daemon"
+  echo "AKTune: mode will apply on the next poll"
+  exit 0
+fi
+
+# A reboot during a write requires an explicit retry after collecting logs.
+if [ -f "$STATE_DIR/apply_pending" ]; then
+  echo "AKTune: tuning is paused after an interrupted profile."
+  echo "Collect logs, then remove /data/adb/aktune/state/apply_pending to retry."
+  exit 0
 fi
 
 if command -v nohup >/dev/null 2>&1; then
@@ -77,8 +81,6 @@ if command -v nohup >/dev/null 2>&1; then
 else
   sh "$MODDIR/tweaks/daemon.sh" >> "$LOG_FILE" 2>&1 &
 fi
-
-echo $! > "$PIDFILE" 2>/dev/null
 
 log_i "action: daemon restarted pid=$!"
 echo "AKTune: daemon restarted"

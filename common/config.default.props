@@ -1,67 +1,36 @@
-# AKTune preset: Aggressive ON / Strict OFF
-# Path: /data/adb/aktune/config.props
-
-# Daemon cadence / anti-thrash
+# AKTune: bounded interactive tuning; screen OFF restores captured values.
+# Existing config files persist. Removed legacy keys are ignored.
 daemon.interval_sec=8
 daemon.debounce_ms=1200
-daemon.boost_ms=2600
 
-# Short interactive boost (top-app uclamp.min)
-uclamp.top.min.interactive=160
-uclamp.top.min.boost=256
+# Top-app minimum on a 0..1024 scale (converted for cgroup v2).
+# Existing higher vendor minima and all maximum clamps are preserved.
+uclamp.top.min.interactive=128
 
-# Broad boost knobs are off by default; top-app uclamp handles most UI wins
-cpu.cpufreq_boost.enable=0
-sched.boost.enable=0
-
-# Schedutil ramp limits (microseconds)
-# ON = fast ramp-up + not-too-fast ramp-down (keeps UI smooth)
+# Only tune an already-active schedutil governor; microseconds, 500..1000000.
 cpu.schedutil.on.little.up=6000
-cpu.schedutil.on.little.down=25000
-cpu.schedutil.on.big.up=1500
+cpu.schedutil.on.little.down=20000
+cpu.schedutil.on.big.up=3000
 cpu.schedutil.on.big.down=18000
-cpu.schedutil.on.prime.up=800
+cpu.schedutil.on.prime.up=2000
 cpu.schedutil.on.prime.down=15000
 
-# OFF = slow ramp-up + faster ramp-down (battery strict)
-cpu.schedutil.off.little.up=60000
-cpu.schedutil.off.little.down=20000
-cpu.schedutil.off.big.up=90000
-cpu.schedutil.off.big.down=25000
-cpu.schedutil.off.prime.up=120000
-cpu.schedutil.off.prime.down=30000
+# Vendor-specific hooks: explicit opt-in; OFF restores captured values.
+cpu.cpufreq_boost.enable=0
+sched.boost.enable=0
+touchboost.enable=0
+touchboost.ms=150
 
-# Migration thresholds
-# ON keeps work responsive without moving to big cores too early.
-sched.upmigrate.on=75
-sched.downmigrate.on=55
-sched.group_upmigrate.on=85
-sched.group_downmigrate.on=65
-sched.upmigrate.off=95
-sched.downmigrate.off=75
-sched.group_upmigrate.off=98
-sched.group_downmigrate.off=80
+# Optional GPU floor: supported frequencies only, 0..100% of hardware max.
+# GPU governor and maximum frequency are never changed.
+gpu.tuning.enable=0
+gpu.min_freq_pct.on=0
 
-# IO policy
-io.read_ahead_kb.on=512
-io.read_ahead_kb.off=128
-io.nr_requests.on=256
-io.nr_requests.off=64
-io.nomerges.on=2
-io.nomerges.off=0
+# Optional read-ahead experiment, 0..512 KiB. Benchmark on your device.
+# Vendor I/O scheduler, merging, queue depth and accounting are preserved.
+io.read_ahead.enable=0
+io.read_ahead_kb.on=128
 
-# IO flags
-io.iostats.disable=1
-io.rq_affinity.enable=1
-io.rq_affinity.value=2
-
-# Network
-net.tcp_low_latency.enable=1
+# Legacy networking experiments remain opt-in.
+net.tcp_low_latency.enable=0
 net.tcp_timestamps.disable=0
-
-# Touch boost (if supported by kernel nodes)
-touchboost.ms=200
-
-# GPU minimum freq floor (% of max)
-gpu.min_freq_pct.on=40
-gpu.min_freq_pct.off=0

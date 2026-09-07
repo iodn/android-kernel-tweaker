@@ -1,3 +1,19 @@
+v2.2
+- Preserve vendor scheduler, GPU governor, VM/ZRAM and I/O queue policies
+- Restore CPU rate limits and top-app minima on screen-off/STRICT
+- Correct cgroup v2 percentage units and mksh GPU arithmetic
+- Keep vendor CPU governors and I/O-wait boosting; support single schedutil rate limits
+- Make GPU floors, touchboost and disk read-ahead explicit opt-ins
+- Resolve mounted storage through device-mapper chains and partitions
+- Fix shell variable collisions and validate numeric configuration
+- Serialize profile writers and remove stale asynchronous boosts
+- Scope restore data to the current boot and pause after interrupted-boot profile application
+- Log attempts before writes and keep kernel crash logging available
+- Reduce stable screen-state polling work; skip tuning before boot completion
+- Add isolated host regression tests and a sourced crash/validation guide
+- Share the guarded implementation between daemon and manual oneshot entrypoints
+- Device performance, battery and Mi A1 crash confirmation remain pending
+
 v2.1
 - Balanced default profile for smoother performance with better battery behavior
 - Lowered interactive GPU minimum frequency floor from 55% to 40%

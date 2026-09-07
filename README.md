@@ -1,409 +1,112 @@
 # AKTune (Android Kernel Tweaker)
 
-AKTune is an adaptive Magisk module that tunes common Android kernel/sysfs knobs to improve real-world responsiveness and UI smoothness while keeping idle behavior relaxed.
+AKTune is an adaptive Magisk module for common Android kernel/sysfs controls. It aims to improve interactive responsiveness and release its performance requests when the screen turns off, allowing the device's existing idle and power management to operate.
 
-Unlike static "one profile 24/7" tuners, AKTune can run in multiple runtime modes and apply profiles dynamically in a safe, capability-aware way.
+**v2.2 prioritizes compatibility and safe restoration.** Host regression tests cover the shell logic. Performance, battery life, and the reported Mi A1 reboot still need testing on real devices. See [the investigation and test procedure](docs/kernel-safety-review.md).
 
-## Runtime modes (AUTO / AGGRESSIVE / STRICT)
+## Runtime modes
 
-AKTune supports **3 modes**, switchable anytime using Magisk's **Action** button:
+Use Magisk's **Action** button to cycle **AUTO → AGGRESSIVE → STRICT → AUTO**.
 
-- **AUTO** (default)
-  - Screen **ON** → **Aggressive profile**
-  - Screen **OFF** → **Strict profile**
-  - This is the intended "fast when you use it, calm when you don't" behavior.
+| Mode | Screen ON | Screen OFF |
+| --- | --- | --- |
+| AUTO (default) | Interactive tuning | Restore values captured before tuning |
+| AGGRESSIVE | Interactive tuning | Interactive tuning |
+| STRICT | Restore captured values | Restore captured values |
 
-- **AGGRESSIVE**
-  - Always runs the **Aggressive profile**
-  - Ignores screen state
+Use **AUTO** for adaptive performance and idle battery behavior. AGGRESSIVE deliberately keeps interactive requests active even with the screen off. STRICT releases AKTune's requests; it does not force slower CPU speeds or restrict background tasks.
 
-- **STRICT**
-  - Always runs the **Strict profile**
-  - Ignores screen state
+Mode changes apply on the next daemon poll, with confirmation of screen transitions. The default interval is eight seconds. The Action button keeps the running daemon alive to avoid overlapping writes.
 
-### Switching modes (Magisk Action button)
+## What is tuned
 
-AKTune includes an `action.sh` script for Magisk Manager.
+| Control | Interactive behavior | Screen OFF in AUTO / STRICT |
+| --- | --- | --- |
+| CPU | Adjust bounded rate limits only when the vendor already selected `schedutil`; supports split and single rate-limit interfaces | Restore captured rate limits |
+| Top-app CPU clamp | Raise the minimum to the configured target when supported; preserve higher vendor minima and all maximum clamps | Restore each changed top-app minimum |
+| GPU | Optional minimum frequency from the device's supported table, subject to its current explicit maximum | Restore the captured minimum |
+| Storage | Optional read-ahead experiment on mounted devices and their backing queues | Restore captured read-ahead |
+| Vendor boost hooks | Explicit opt-in | Restore captured values |
 
-Each tap cycles:
+GPU governor switching, scheduler migration/latency overrides, global CPU clamp limits, fixed memory reserves, VM writeback changes, ZRAM reconfiguration, I/O scheduler switching, forced queue depth, disabled request merging, and kernel log suppression have been removed.
 
-**AUTO → AGGRESSIVE → STRICT → AUTO**
+The module keeps CPU/GPU maximum frequencies and thermal controls intact. It leaves CPU placement, memory reclaim, Doze, notifications, and background services to Android. Existing CPU governors, I/O-wait boosting, disk statistics, and disk request merging are preserved.
 
-The current mode is also printed clearly inside Magisk's output window and takes effect immediately (the daemon is restarted automatically).
+Removing AKTune's requests at screen-off can reduce its additional idle power use. This does not establish a battery-life improvement over the stock ROM, which already manages power. On a kernel without supported controls, the module may make few or no changes.
 
-## Key design goals
+## Install or upgrade
 
-### Cross-device compatibility
-Only touches nodes that exist on your device. No hardcoded SoC layouts.
-Every time AKTune changes a sysfs/proc node for the first time, it saves the original value so it can restore it later.
+1. Build or obtain the module ZIP and install it through Magisk.
+2. Reboot before testing. A reboot is required when upgrading from v2.0/v2.1 to clear the removed legacy tweaks.
+3. Keep AUTO selected and optional experiments disabled for the first test.
 
-### Configurable behavior (no code edits)
-Users can tune behavior via:
-`/data/adb/aktune/config.props`
+Configuration persists at `/data/adb/aktune/config.props`. New GPU, touchboost, and read-ahead enable flags default to disabled even if an older config contains their old numerical values. Removed keys are ignored; other existing supported values are retained.
 
-### No overclocking / no thermal bypass
-AKTune does not overclock beyond vendor limits and does not disable thermal throttling.
-
-## Features
-
-### Adaptive runtime profiles
-Depending on the runtime mode:
-
-- AUTO:
-  - Detects interactive state (screen ON/OFF)
-  - Applies **ON** profile when interactive
-  - Applies **OFF** profile when idle
-  - Uses debounce logic + stable-state confirmation to avoid rapid toggling
-
-- AGGRESSIVE:
-  - Forces interactive profile permanently
-
-- STRICT:
-  - Forces idle profile permanently
-
-### Baseline capture + restore (uninstall-safe)
-- When AKTune writes a node the first time, it stores the original value in a TSV database
-- On uninstall, it restores those captured baseline values where possible
-
-### Capability detection (only apply what exists)
-AKTune checks for major subsystems and enables tuning blocks only if supported:
-
-- CPUFreq: `/sys/devices/system/cpu/cpufreq`
-- GPU devfreq: `/sys/class/devfreq`
-- UCLAMP:
-  - `/dev/stune/*/uclamp.*`
-  - `/dev/cpuset/*/uclamp.*`
-  - or cgroup v2 `cpu.uclamp.*`
-- zswap: `/sys/module/zswap`
-- zram: `/sys/block/zram0`
-- MGLRU: `/sys/kernel/mm/lru_gen`
-- Memory class: derived from `MemTotal` (small / medium / large)
-
-### Persistent logging
-All activity is logged to:
-
-`/data/adb/aktune/logs/aktune.log`
-
-## What AKTune tunes (high level)
-
-AKTune can tune these categories depending on kernel support:
-
-1. Scheduler + overhead sysctls  
-   e.g. perf events CPU time limit, schedstats disable, timer migration
-
-2. CPU governor selection + schedutil ramp behavior  
-   Cluster-tier-aware settings (little / big / prime)
-
-3. UCLAMP + optional broad boost
-   Prioritizes top-app / foreground and can enable sched_boost when configured
-
-4. Migration thresholds  
-   Moves tasks to bigger cores sooner while interactive
-
-5. Touch/input boost hooks (OEM dependent)  
-   Enables short boost windows for better touch-to-frame responsiveness
-
-6. GPU devfreq governor + minimum freq bias  
-   Keeps GPU from dropping too low during UI bursts (interactive-biased)
-
-7. I/O queue tuning  
-   Read-ahead, iostats toggle, rq_affinity, scheduler preference
-
-8. Memory (VM) tuning  
-   Dirty ratios, cache pressure, compaction, stat interval, optional min_free_kbytes
-
-9. cpuset placement (if supported)  
-   Protects foreground performance by restricting background groups to little CPUs
-
-10. Networking latency flags (optional)  
-   tcp_low_latency and optional timestamps disable
-
-## Installation
-
-Install like a standard Magisk module:
-
-1. Flash the AKTune zip in Magisk
-2. Reboot
-
-Magisk **v20.4+** recommended.
-
-## Lifecycle (what runs when)
-
-### 1) `post-fs-data.sh` (early boot)
-AKTune uses this stage to:
-
-- Create `/data/adb/aktune` directories
-- Ensure script permissions are correct
-- Create baseline/log/config files if missing
-
-No heavy tuning is applied here.
-
-### 2) `service.sh` (boot completed)
-After Android finishes booting:
-
-- Waits for `sys.boot_completed=1`
-- Starts the adaptive daemon in the background: `tweaks/daemon.sh`
-
-The daemon becomes the main runtime tuning engine.
-
-### 3) Optional oneshot script: `aktune.sh`
-`aktune.sh` is a one-time tuning pass (conservative defaults).
-It is included mainly for manual usage / debugging.
-
-You can run it manually (optional):
-
-```sh
-su -c sh /data/adb/modules/aktune/aktune.sh
-````
-
-## Configuration
-
-### Main config file (runtime)
-
-AKTune reads configuration from:
-
-`/data/adb/aktune/config.props`
-
-This file is persistent across reboots and module updates.
-
-### Shipped preset (module default)
-
-The module ships a preset:
-
-`common/config.default.props`
-
-On first run, AKTune will populate `/data/adb/aktune/config.props` from this preset if the config file is missing/empty.
-
-
-## Preset included: "Aggressive ON / Strict OFF"
-
-This preset is designed so that:
-
-* **Interactive behavior (ON profile)** is strongly optimized for responsiveness
-* **Idle behavior (OFF profile)** becomes more strict / battery oriented
-
-Preset file: `common/config.default.props`
-
-Example values included in the preset:
-
-* Daemon cadence:
-
-  * `daemon.interval_sec`
-  * `daemon.debounce_ms`
-  * `daemon.boost_ms`
-
-* UCLAMP behavior:
-
-  * `uclamp.top.min.interactive`
-  * `uclamp.top.min.boost`
-
-* CPU schedutil ramp limits:
-
-  * `cpu.schedutil.on.{tier}.up/down`
-  * `cpu.schedutil.off.{tier}.up/down`
-
-* Broad boost controls:
-
-  * `cpu.cpufreq_boost.enable`
-  * `sched.boost.enable`
-
-* Migration thresholds:
-
-  * `sched.upmigrate.on/off`
-  * `sched.downmigrate.on/off`
-  * `sched.group_upmigrate.on/off`
-  * `sched.group_downmigrate.on/off`
-
-* I/O behavior:
-
-  * `io.read_ahead_kb.on/off`
-  * `io.nr_requests.on/off`
-  * `io.nomerges.on/off`
-  * `io.rq_affinity.enable/value`
-  * `io.iostats.disable`
-
-* Network:
-
-  * `net.tcp_low_latency.enable`
-  * `net.tcp_timestamps.disable`
-
-* Touch boost:
-
-  * `touchboost.ms`
-
-* GPU min floor:
-
-  * `gpu.min_freq_pct.on/off`
-
-
-## How to change behavior (user workflow)
-
-### Edit config
-
-Open and modify:
-
-`/data/adb/aktune/config.props`
-
-Example:
+To adopt all new defaults, back up your config, copy the shipped preset, then reboot:
 
 ```sh
 su
-vi /data/adb/aktune/config.props
+cp /data/adb/aktune/config.props /data/adb/aktune/config.props.backup
+cp /data/adb/modules/aktune/common/config.default.props /data/adb/aktune/config.props
+reboot
 ```
 
-### Apply changes
+## Configuration
 
-The daemon reads values at runtime, but the safest workflow is:
+See [common/config.default.props](common/config.default.props) for supported settings and ranges. Edit the persistent copy, then reboot to ensure a consistent test.
 
-* Edit config
-* Reboot
+- `daemon.interval_sec`: polling interval, 2–300 seconds; default 8.
+- `daemon.debounce_ms`: minimum interval between automatic transitions; default 1200.
+- `uclamp.top.min.interactive`: 0–1024; default 128. Converted to percentage units for cgroup v2.
+- `cpu.schedutil.on.{little,big,prime}.{up,down}`: microseconds, 500–1000000. CPU tiers are frequency-based heuristics; homogeneous policies use the little preset.
+- `gpu.tuning.enable=1` and `gpu.min_freq_pct.on`: optional supported GPU floor. Both must be configured for a nonzero floor.
+- `io.read_ahead.enable=1` and `io.read_ahead_kb.on`: optional read-ahead, 0–512 KiB. Measure app launch and storage behavior before retaining a change.
+- `touchboost.enable`, `cpu.cpufreq_boost.enable`, `sched.boost.enable`: optional vendor hooks, disabled by default.
+- `net.tcp_low_latency.enable`, `net.tcp_timestamps.disable`: legacy experiments, disabled in the new preset. These are not a general networking performance recommendation.
 
-### Restore preset quickly
+Legacy `daemon.boost_ms`, `uclamp.top.min.boost`, CPU OFF-rate settings, migration thresholds, GPU OFF floors, and all I/O settings except the read-ahead controls above are ignored. Timed asynchronous boosts were removed because they could outlive screen-off or a daemon restart.
 
-To re-apply the shipped preset:
+## State, logging, and recovery
+
+State is stored under `/data/adb/aktune`:
+
+- `logs/aktune.log`: kernel identification, mode/profile transitions, stages, attempted writes (`Try:`), verified writes (`Set:`), and failures.
+- `state/baseline.tsv`: original values captured before the first change in this boot.
+- `state/baseline.previous.tsv`: the previous baseline database, kept for investigation.
+- `state/blocked.tsv`: rejected or mismatched writes, skipped for the rest of this boot; baseline restoration is still attempted.
+- `state/daemon.pid` and a boot-specific lock: enforce one tuning writer, including manual oneshot runs.
+- `state/apply_pending`: a profile that started but did not finish.
+
+Baselines and blocked nodes reset for each boot, so an old ROM/kernel's values are not replayed after an update. Restoration is best-effort: vendor services can also change these controls, and the kernel may reject a restore.
+
+If a new boot finds an unfinished profile from an older boot, tuning pauses. This is a limited reboot guard, not proof of a kernel crash. Power loss during application can also trigger it; crashes after profile completion are outside its coverage. Writes to the log and marker are not guaranteed to survive sudden power loss.
+
+If a device reboots unexpectedly, disable AKTune in Magisk and reboot. Preserve its logs and any pstore/last_kmsg data before retrying. Follow [the crash collection instructions](docs/kernel-safety-review.md#collecting-a-crash-report). After investigation, removing `state/apply_pending` allows a deliberate retry; the Action button never removes it automatically.
+
+A process killed with SIGKILL may leave its lock until reboot. Normal termination releases it. Uninstall stops a running daemon and attempts to restore this boot's captured values. Disabling the module and rebooting clears its runtime kernel changes.
+
+To inspect activity:
 
 ```sh
-su -c cp /data/adb/modules/aktune/common/config.default.props /data/adb/aktune/config.props
-su -c reboot
+su -c 'tail -n 100 /data/adb/aktune/logs/aktune.log'
 ```
 
+## Lifecycle and manual use
 
-## Files and state (persistent)
+`post-fs-data.sh` prepares directories and permissions. `service.sh` waits for Android boot completion, then starts `tweaks/daemon.sh`. Profiles are applied only on state/mode transitions. Stable screen states need one probe per poll; transitions receive a second confirmation. Dumpsys fallbacks use timeouts, and the daemon does not acquire a wakelock.
 
-AKTune stores persistent state under:
+`aktune.sh` performs one interactive tuning pass through the same guarded implementation. It refuses to compete with a running daemon. AUTO is the normal workflow; a manual oneshot does not monitor subsequent screen-off events.
 
-* Logs:
-
-  * `/data/adb/aktune/logs/aktune.log`
-* Baseline DB (for restore on uninstall):
-
-  * `/data/adb/aktune/state/baseline.tsv`
-* Daemon PID:
-
-  * `/data/adb/aktune/state/daemon.pid`
-* Forced runtime mode:
-
-  * `/data/adb/aktune/state/force_mode`
-
-### `baseline.tsv` format
-
-A simple TSV database:
-
-```
-<path> <original_value>
-```
-
-This allows best-effort restore on uninstall.
-
-## Logging (how to verify it's working)
-
-Log file:
-
-`/data/adb/aktune/logs/aktune.log`
-
-You should see entries such as:
-
-* Capability detection summary
-* Mode state changes: `MODE: auto` / `MODE: aggressive` / `MODE: strict`
-* Profile transitions:
-
-  * `PROFILE: ON`
-  * `PROFILE: OFF`
-* Successful writes: `Set: <path> = <value>`
-* Write failures (if blocked by kernel/SELinux)
-* "Write verify mismatch" warnings for bracketed sysfs formats (handled safely)
-
-To inspect the last lines:
+## Build and host tests
 
 ```sh
-su -c tail -n 200 /data/adb/aktune/logs/aktune.log
-```
-
-## Uninstall behavior
-
-On uninstall, AKTune runs:
-
-`uninstall.sh`
-
-It performs:
-
-* Baseline restore from `baseline.tsv`
-* Optional cleanup of AKTune state directory (currently enabled)
-
-This makes removal best-effort clean, even if the module touched dozens of nodes.
-
-## Expectations
-
-AKTune is intentionally performance-focused during interactive usage.
-
-Depending on device/kernel, you may observe:
-
-* Higher peak temperatures under long interactive sessions
-* Faster battery drain during active use
-* Improved touch response and smoother UI bursts
-
-AKTune does NOT:
-
-* Overclock CPU/GPU beyond vendor maximums
-* Disable thermal throttling
-* Patch Android framework services (pure sysfs/proc tuning)
-
-## Troubleshooting
-
-### "It doesn't feel different"
-
-* Your kernel may not expose common tuning nodes
-* Some OEM kernels ignore writes or lock them down
-
-Check logs:
-
-```sh
-su -c tail -n 200 /data/adb/aktune/logs/aktune.log
-```
-
-### "Failed to write" in logs
-
-Common reasons:
-
-* Node exists but write is denied
-* SELinux restrictions
-* Kernel ignores the value
-
-AKTune will mark problematic nodes and avoid repeated spam where possible.
-
-### Daemon not running
-
-Check:
-
-```sh
-su -c cat /data/adb/aktune/state/daemon.pid
-su -c ps -A | grep -i daemon.sh
-```
-
-If needed, reboot (Magisk service will restart it).
-
-## Build
-
-`build.sh` produces:
-
-* `AKTune-v2.0.zip`
-
-Example:
-
-```sh
+python3 tests/test_safety.py
+# Optional: test the Android shell family as well.
+AKTUNE_TEST_SHELL=mksh python3 tests/test_safety.py
 ./build.sh
 ```
 
-## Quick summary: why it feels fast
-
-* CPU ramps faster (schedutil tuning + tier awareness)
-* top-app gets priority (UCLAMP clamps, with optional sched_boost)
-* touch triggers short boosts (input/touchboost hooks)
-* GPU doesn't drop too low (min floor during interactive)
-* background interference reduced (cpuset + clamps)
-* idle mode turns it all back down (AUTO/STRICT)
-
-That combination reduces "Android jitter" on most modern kernels.
+Tests default to BusyBox `sh`, use temporary fake kernel nodes, and do not require root or write host kernel controls. The build produces `AKTune-v2.2.zip` and excludes tests and research notes.
 
 ## More Apps by KaijinLab!
 

@@ -2,7 +2,8 @@
 
 AKTUNE_ID="aktune"
 
-AKTUNE_DATA_DIR="/data/adb/aktune"
+AKTUNE_DATA_DIR="${AKTUNE_DATA_DIR:-/data/adb/aktune}"
+AKTUNE_CR="$(printf '\r')"
 LOG_DIR="$AKTUNE_DATA_DIR/logs"
 STATE_DIR="$AKTUNE_DATA_DIR/state"
 LOG_FILE="$LOG_DIR/aktune.log"
@@ -73,15 +74,6 @@ akt_trim_ws() {
   set -- $s
   set +f
   echo "$*"
-}
-
-akt_first_token() {
-  s="$1"
-  set -f
-  # shellcheck disable=SC2086
-  set -- $s
-  set +f
-  echo "$1"
 }
 
 read_first_line() {
@@ -179,10 +171,11 @@ akt_sleep() {
 
 # Config parsing without awk/grep
 _get_prop_raw() {
+  local key line
   key="$1"
   [ -f "$CONFIG_FILE" ] || return 1
-  while IFS= read -r line; do
-    line="$(akt_strip_cr "$line")"
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%"$AKTUNE_CR"}"
     case "$line" in ""|\#*) continue ;; esac
     case "$line" in "$key="*) echo "${line#*=}"; return 0 ;; esac
   done < "$CONFIG_FILE"
@@ -198,10 +191,22 @@ get_prop() {
 }
 
 get_prop_int() {
-  key="$1"
-  def="$2"
-  val="$(get_prop "$key" "$def")"
-  case "$val" in ""|*[!0-9-]*) echo "$def" ;; *) echo "$val" ;; esac
+  local val
+  val="$(get_prop "$1" "$2")"
+  # These settings are nonnegative. Reject signs, embedded '-' and overflow.
+  case "$val" in ""|*[!0-9]*|??????????*) echo "$2"; return ;; esac
+  while [ "${val#0}" != "$val" ]; do val="${val#0}"; done
+  echo "${val:-0}"
+}
+
+get_prop_range() {
+  local val
+  val="$(get_prop_int "$1" "$2")"
+  if [ "$val" -lt "$3" ] || [ "$val" -gt "$4" ]; then
+    echo "$2"
+  else
+    echo "$val"
+  fi
 }
 
 get_prop_bool() {
@@ -226,7 +231,7 @@ _ensure_default_config() {
   # Copy module default preset (first install)
   if [ -n "${AKTUNE_MODDIR:-}" ] && [ -f "$AKTUNE_MODDIR/common/config.default.props" ]; then
     # avoid cat if possible
-    akt_read_file "$AKTUNE_MODDIR/common/config.default.props" > "$CONFIG_FILE" 2>/dev/null
+    cp "$AKTUNE_MODDIR/common/config.default.props" "$CONFIG_FILE" 2>/dev/null
     return 0
   fi
 
@@ -234,9 +239,7 @@ _ensure_default_config() {
   cat > "$CONFIG_FILE" <<'EOF'
 daemon.interval_sec=8
 daemon.debounce_ms=1200
-daemon.boost_ms=2200
 uclamp.top.min.interactive=128
-uclamp.top.min.boost=160
 EOF
 }
 
@@ -247,6 +250,19 @@ aktune_prepare_dirs() {
   [ -f "$BLOCKED_DB" ] || : > "$BLOCKED_DB"
   [ -f "$CONFIG_FILE" ] || : > "$CONFIG_FILE"
   _ensure_default_config
+}
+
+aktune_prepare_boot_state() {
+  local boot previous
+  boot="$(read_first_line /proc/sys/kernel/random/boot_id)"
+  [ -n "$boot" ] || { log_e "Cannot identify boot; skipping tuning"; return 1; }
+  previous="$(read_first_line "$STATE_DIR/boot_id")"
+  if [ "$boot" != "$previous" ]; then
+    cp "$BASELINE_DB" "$STATE_DIR/baseline.previous.tsv" 2>/dev/null
+    : > "$BASELINE_DB"
+    : > "$BLOCKED_DB"
+    printf '%s\n' "$boot" > "$STATE_DIR/boot_id"
+  fi
 }
 
 rotate_logs_if_needed() {
@@ -269,7 +285,7 @@ wait_boot_completed() {
     akt_sleep 1
     i=$((i + 1))
   done
-  return 0
+  return 1
 }
 
 # Keep digits only (best-effort)
@@ -359,4 +375,14 @@ get_mem_total_mb() {
   case "$mb" in ""|*[!0-9]*) : ;; *) [ "$mb" -gt 0 ] && { echo "$mb"; return 0; } ;; esac
 
   echo "0"
+}
+
+aktune_daemon_running() {
+  local pid command_line
+  pid="$(read_first_line "$STATE_DIR/daemon.pid")"
+  case "$pid" in ""|*[!0-9]*) return 1 ;; esac
+  [ "$pid" -gt 1 ] && kill -0 "$pid" 2>/dev/null || return 1
+  command_line="$(tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null)"
+  case "$command_line" in *"/tweaks/daemon.sh"*) return 0 ;; esac
+  return 1
 }

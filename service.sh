@@ -1,22 +1,19 @@
 #!/system/bin/sh
 
 MODDIR="${0%/*}"
+export AKTUNE_MODDIR="$MODDIR"
 . "$MODDIR/common/util.sh"
 
 aktune_prepare_dirs
 rotate_logs_if_needed
 
 log_i "service: waiting for boot completion"
-wait_boot_completed 180
+wait_boot_completed 180 || { log_w "service: boot incomplete; tuning skipped"; exit 0; }
 akt_sleep 5
 
-PIDFILE="$STATE_DIR/daemon.pid"
-if [ -f "$PIDFILE" ]; then
-  pid="$(read_first_line "$PIDFILE" 2>/dev/null)"
-  if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-    log_i "service: daemon already running pid=$pid"
-    exit 0
-  fi
+if aktune_daemon_running; then
+  log_i "service: daemon already running"
+  exit 0
 fi
 
 log_i "service: starting adaptive daemon"
@@ -27,6 +24,5 @@ else
   sh "$MODDIR/tweaks/daemon.sh" >> "$LOG_FILE" 2>&1 &
 fi
 
-printf "%s\n" "$!" > "$PIDFILE" 2>/dev/null
 log_i "service: daemon pid=$!"
 exit 0

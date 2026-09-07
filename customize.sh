@@ -4,7 +4,7 @@ SKIPUNZIP=0
 
 print_modname() {
   ui_print "*******************************"
-  ui_print " AKTune v2.0"
+  ui_print " AKTune v2.2"
   ui_print " Kernel Tweaker"
   ui_print "*******************************"
 }
