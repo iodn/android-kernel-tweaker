@@ -2,11 +2,10 @@
 
 AKTune is an adaptive Magisk module for common Android kernel/sysfs controls. It aims to improve interactive responsiveness and release its performance requests when the screen turns off, allowing the device's existing idle and power management to operate.
 
-**v2.2 prioritizes compatibility and safe restoration.** Host regression tests cover the shell logic. Performance, battery life, and the reported Mi A1 reboot still need testing on real devices. See [the investigation and test procedure](docs/kernel-safety-review.md).
 
 ## Runtime modes
 
-Use Magisk's **Action** button to cycle **AUTO → AGGRESSIVE → STRICT → AUTO**.
+Use Magisk's **Action** button to cycle **AUTO > AGGRESSIVE > STRICT > AUTO**.
 
 | Mode | Screen ON | Screen OFF |
 | --- | --- | --- |
@@ -81,9 +80,6 @@ Baselines and blocked nodes reset for each boot, so an old ROM/kernel's values a
 
 If a new boot finds an unfinished profile from an older boot, tuning pauses. This is a limited reboot guard, not proof of a kernel crash. Power loss during application can also trigger it; crashes after profile completion are outside its coverage. Writes to the log and marker are not guaranteed to survive sudden power loss.
 
-If a device reboots unexpectedly, disable AKTune in Magisk and reboot. Preserve its logs and any pstore/last_kmsg data before retrying. Follow [the crash collection instructions](docs/kernel-safety-review.md#collecting-a-crash-report). After investigation, removing `state/apply_pending` allows a deliberate retry; the Action button never removes it automatically.
-
-A process killed with SIGKILL may leave its lock until reboot. Normal termination releases it. Uninstall stops a running daemon and attempts to restore this boot's captured values. Disabling the module and rebooting clears its runtime kernel changes.
 
 To inspect activity:
 
@@ -97,16 +93,6 @@ su -c 'tail -n 100 /data/adb/aktune/logs/aktune.log'
 
 `aktune.sh` performs one interactive tuning pass through the same guarded implementation. It refuses to compete with a running daemon. AUTO is the normal workflow; a manual oneshot does not monitor subsequent screen-off events.
 
-## Build and host tests
-
-```sh
-python3 tests/test_safety.py
-# Optional: test the Android shell family as well.
-AKTUNE_TEST_SHELL=mksh python3 tests/test_safety.py
-./build.sh
-```
-
-Tests default to BusyBox `sh`, use temporary fake kernel nodes, and do not require root or write host kernel controls. The build produces `AKTune-v2.2.zip` and excludes tests and research notes.
 
 ## More Apps by KaijinLab!
 
